@@ -231,7 +231,9 @@ class SentimentClassifier(nn.Module):
         text_outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask).pooler_output
         visual_outputs = self.bert(input_ids=s2_input_ids, attention_mask=s2_attention_mask).pooler_output
         context = self.cross_modal_attention(text_outputs, visual_outputs)
-        output = self.drop(context)
+        #output = self.drop(context)
+        outputs, _ = model(input_ids=input_ids, attention_mask=attention_mask, s2_input_ids=s2_input_ids, s2_attention_mask=s2_attention_mask)
+
         return self.out(output)
 
 
