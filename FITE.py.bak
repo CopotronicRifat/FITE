@@ -293,6 +293,7 @@ def eval_model(model, data_loader, loss_fn, device, n_examples, detailed_results
     losses = []
     correct_predictions = 0
     rows = []  # For storing detailed results
+    feature = None  # Placeholder for feature return, adjust as necessary
 
     with torch.no_grad():
         for d in data_loader:
@@ -333,9 +334,10 @@ def eval_model(model, data_loader, loss_fn, device, n_examples, detailed_results
     if detailed_results:
         # Optionally convert detailed results to a DataFrame or similar structure for analysis
         detailed_results_df = pd.DataFrame(rows, columns=["tweet", "target", "actual_label", "predicted_label"])
-        return accuracy, average_loss, detailed_results_df
+        return accuracy, average_loss, detailed_results_df, feature
 
-    return accuracy, average_loss
+    return accuracy, average_loss, None, feature  # Always return four values
+
 
 
 
@@ -381,9 +383,10 @@ for run_number in range(NUM_RUNS):
 
         if val_acc > best_valid_acc:
             best_valid_acc = val_acc
-            test_acc, _, detailed_results, feature = eval_model(
-            model, test_data_loader, loss_fn, device, len(test_df), detailed_results=True
-            )
+            test_acc, test_loss, detailed_results, feature = eval_model(
+    model, test_data_loader, loss_fn, device, len(test_df), detailed_results=True
+)
+
             macro_f1 = f1_score(
                 detailed_results.label, detailed_results.prediction, average="macro"
             )
