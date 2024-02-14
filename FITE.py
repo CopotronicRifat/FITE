@@ -200,41 +200,35 @@ test_data_loader = create_data_loader(
 )
 
 
-class CrossModalAttention(nn.Module):
-    def __init__(self, hidden_size):
-        super(CrossModalAttention, self).__init__()
-        self.query = nn.Linear(hidden_size, hidden_size)
-        self.key = nn.Linear(hidden_size, hidden_size)
-        self.value = nn.Linear(hidden_size, hidden_size)
-
-    def forward(self, text_features, visual_features):
-        query = self.query(text_features)
-        key = self.key(visual_features)
-        value = self.value(visual_features)
-        
-        attention_scores = torch.matmul(query, key.transpose(-2, -1))
-        attention_probs = F.softmax(attention_scores, dim=-1)
-        context = torch.matmul(attention_probs, value)
-        
-        return context + text_features  # Skip connection
-
-# Modify the SentimentClassifier to include CrossModalAttention
 class SentimentClassifier(nn.Module):
     def __init__(self, n_classes):
         super(SentimentClassifier, self).__init__()
+
         self.bert = AutoModel.from_pretrained(PRE_TRAINED_MODEL_NAME)
-        self.cross_modal_attention = CrossModalAttention(self.bert.config.hidden_size)
+        self.s2_bert = AutoModel.from_pretrained(PRE_TRAINED_MODEL_NAME)
+
+        self.cross_modal_attention = nn.MultiheadAttention(embed_dim=self.bert.config.hidden_size, num_heads=1)
+
         self.drop = nn.Dropout(p=DROPOUT_PROB)
-        self.out = nn.Linear(self.bert.config.hidden_size, n_classes)
+        self.out = nn.Linear(self.bert.config.hidden_size * 2, n_classes)  # Adjusted to concatenate attention outputs
 
     def forward(self, input_ids, attention_mask, s2_input_ids, s2_attention_mask):
-        text_outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask).pooler_output
-        visual_outputs = self.bert(input_ids=s2_input_ids, attention_mask=s2_attention_mask).pooler_output
-        context = self.cross_modal_attention(text_outputs, visual_outputs)
-        #output = self.drop(context)
-        outputs, _ = model(input_ids=input_ids, attention_mask=attention_mask, s2_input_ids=s2_input_ids, s2_attention_mask=s2_attention_mask)
+        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        s2_outputs = self.s2_bert(input_ids=s2_input_ids, attention_mask=s2_attention_mask)
 
-        return self.out(output)
+        # Prepare for cross-modal attention: [batch_size, num_heads, sequence_length, embed_size]
+        query = outputs.pooler_output.unsqueeze(1)  # Text representation
+        key_value = s2_outputs.pooler_output.unsqueeze(1)  # Image caption and face description representation
+
+        # Cross-modal attention
+        attention_output, _ = self.cross_modal_attention(query, key_value, key_value)
+        attention_output = attention_output.squeeze(1)  # Remove num_heads dimension
+
+        combined_representation = torch.cat((outputs.pooler_output, attention_output), dim=1)
+
+        outputs = self.drop(combined_representation)
+        return self.out(outputs)
+
 
 
 

@@ -200,40 +200,33 @@ test_data_loader = create_data_loader(
 )
 
 
-class CrossModalAttention(nn.Module):
-    def __init__(self, hidden_size):
-        super(CrossModalAttention, self).__init__()
-        self.query = nn.Linear(hidden_size, hidden_size)
-        self.key = nn.Linear(hidden_size, hidden_size)
-        self.value = nn.Linear(hidden_size, hidden_size)
-
-    def forward(self, text_features, visual_features):
-        query = self.query(text_features)
-        key = self.key(visual_features)
-        value = self.value(visual_features)
-        
-        attention_scores = torch.matmul(query, key.transpose(-2, -1))
-        attention_probs = F.softmax(attention_scores, dim=-1)
-        context = torch.matmul(attention_probs, value)
-        
-        return context + text_features  # Skip connection
-
-# Modify the SentimentClassifier to include CrossModalAttention
+# Construct and instantiate the classifier.
 class SentimentClassifier(nn.Module):
     def __init__(self, n_classes):
         super(SentimentClassifier, self).__init__()
+
         self.bert = AutoModel.from_pretrained(PRE_TRAINED_MODEL_NAME)
-        self.cross_modal_attention = CrossModalAttention(self.bert.config.hidden_size)
+        self.s2_bert = AutoModel.from_pretrained(PRE_TRAINED_MODEL_NAME)
+        self.gate_caption = nn.Linear(self.bert.config.hidden_size, self.bert.config.hidden_size)
+        self.gate_face = nn.Linear(self.bert.config.hidden_size, self.bert.config.hidden_size)
+        self.gate = nn.Linear(self.bert.config.hidden_size, self.bert.config.hidden_size)
+
         self.drop = nn.Dropout(p=DROPOUT_PROB)
         self.out = nn.Linear(self.bert.config.hidden_size, n_classes)
 
     def forward(self, input_ids, attention_mask, s2_input_ids, s2_attention_mask):
-        text_outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask).pooler_output
-        visual_outputs = self.bert(input_ids=s2_input_ids, attention_mask=s2_attention_mask).pooler_output
-        context = self.cross_modal_attention(text_outputs, visual_outputs)
-        output = self.drop(context)
-        return self.out(output)
+        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        s2_outputs = self.s2_bert(input_ids=s2_input_ids, attention_mask=s2_attention_mask)
 
+        caption = self.gate_caption(outputs.pooler_output)
+        face = self.gate_face(s2_outputs.pooler_output)
+        gate_all = self.gate(caption * face)
+        T = torch.sigmoid(gate_all)
+        C = 1 - T
+        outputs_save = T*caption + C*face
+        
+        outputs = self.drop(outputs_save)
+        return self.out(outputs), outputs_save
 
 
 # Set up the device.
