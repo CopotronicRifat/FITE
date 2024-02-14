@@ -22,8 +22,8 @@ from transformers import AutoModel, AutoTokenizer
 
 # Put model inputs here. #
 train_tsv = "data/twitter2017/train.tsv"
-dev_tsv = "data/IJCAI2019_data/twitter2017/dev.tsv"
-test_tsv = "data/IJCAI2019_data/twitter2017/test.tsv"
+dev_tsv = "data/twitter2017/dev.tsv"
+test_tsv = "data/twitter2017/test.tsv"
 # DOUBLE CHECK THE CAPTIONS FILE IS FOR THE RIGHT DATASET! #
 captions_json = "./captions/twitter2017_images.json"
 
