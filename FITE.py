@@ -326,6 +326,8 @@ def eval_model(model, data_loader, loss_fn, device, n_examples, detailed_results
                         preds.cpu().numpy(),
                     )
                 )
+            
+
 
     # Compute overall accuracy and average loss
     accuracy = correct_predictions / n_examples

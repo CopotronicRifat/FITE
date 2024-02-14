@@ -377,7 +377,9 @@ for run_number in range(NUM_RUNS):
         )
 
         print(f"Train loss {train_loss} accuracy {train_acc}")
-        val_acc, val_loss = eval_model(model, val_data_loader, loss_fn, device, len(val_df))
+        # Update the call to eval_model for the validation phase
+        val_acc, val_loss, _, _ = eval_model(model, val_data_loader, loss_fn, device, len(val_df))
+
 
         print(f"Val   loss {val_loss} accuracy {val_acc}")
 
