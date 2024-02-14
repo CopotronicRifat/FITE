@@ -200,33 +200,36 @@ test_data_loader = create_data_loader(
 )
 
 
-# Construct and instantiate the classifier.
 class SentimentClassifier(nn.Module):
     def __init__(self, n_classes):
         super(SentimentClassifier, self).__init__()
 
         self.bert = AutoModel.from_pretrained(PRE_TRAINED_MODEL_NAME)
         self.s2_bert = AutoModel.from_pretrained(PRE_TRAINED_MODEL_NAME)
-        self.gate_caption = nn.Linear(self.bert.config.hidden_size, self.bert.config.hidden_size)
-        self.gate_face = nn.Linear(self.bert.config.hidden_size, self.bert.config.hidden_size)
-        self.gate = nn.Linear(self.bert.config.hidden_size, self.bert.config.hidden_size)
+
+        self.cross_modal_attention = nn.MultiheadAttention(embed_dim=self.bert.config.hidden_size, num_heads=1)
 
         self.drop = nn.Dropout(p=DROPOUT_PROB)
-        self.out = nn.Linear(self.bert.config.hidden_size, n_classes)
+        self.out = nn.Linear(self.bert.config.hidden_size * 2, n_classes)  # Adjusted to concatenate attention outputs
 
     def forward(self, input_ids, attention_mask, s2_input_ids, s2_attention_mask):
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
         s2_outputs = self.s2_bert(input_ids=s2_input_ids, attention_mask=s2_attention_mask)
 
-        caption = self.gate_caption(outputs.pooler_output)
-        face = self.gate_face(s2_outputs.pooler_output)
-        gate_all = self.gate(caption * face)
-        T = torch.sigmoid(gate_all)
-        C = 1 - T
-        outputs_save = T*caption + C*face
-        
-        outputs = self.drop(outputs_save)
-        return self.out(outputs), outputs_save
+        # Prepare for cross-modal attention: [batch_size, num_heads, sequence_length, embed_size]
+        query = outputs.pooler_output.unsqueeze(1)  # Text representation
+        key_value = s2_outputs.pooler_output.unsqueeze(1)  # Image caption and face description representation
+
+        # Cross-modal attention
+        attention_output, _ = self.cross_modal_attention(query, key_value, key_value)
+        attention_output = attention_output.squeeze(1)  # Remove num_heads dimension
+
+        combined_representation = torch.cat((outputs.pooler_output, attention_output), dim=1)
+
+        outputs = self.drop(combined_representation)
+        return self.out(outputs)
+
+
 
 
 # Set up the device.

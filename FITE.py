@@ -211,7 +211,7 @@ class SentimentClassifier(nn.Module):
 
         self.drop = nn.Dropout(p=DROPOUT_PROB)
         self.out = nn.Linear(self.bert.config.hidden_size * 2, n_classes)  # Adjusted to concatenate attention outputs
-
+    
     def forward(self, input_ids, attention_mask, s2_input_ids, s2_attention_mask):
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
         s2_outputs = self.s2_bert(input_ids=s2_input_ids, attention_mask=s2_attention_mask)
@@ -241,7 +241,6 @@ else:
     print(f"CUDA not available, using CPU.")
 
 
-
 def train_epoch(model, data_loader, loss_fn, optimizer, device, scheduler, n_examples):
     model = model.train()
 
@@ -255,7 +254,8 @@ def train_epoch(model, data_loader, loss_fn, optimizer, device, scheduler, n_exa
         s2_attention_mask = d["attention_mask"].to(device)
         targets = d["targets"].to(device)
 
-        outputs, outputs_save = model(input_ids=input_ids, attention_mask=attention_mask, s2_input_ids=s2_input_ids, s2_attention_mask=s2_attention_mask)
+        # Single output from the model
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask, s2_input_ids=s2_input_ids, s2_attention_mask=s2_attention_mask)
 
         _, preds = torch.max(outputs, dim=1)
         loss = loss_fn(outputs, targets)
@@ -270,6 +270,7 @@ def train_epoch(model, data_loader, loss_fn, optimizer, device, scheduler, n_exa
         optimizer.zero_grad()
 
     return correct_predictions / n_examples, np.mean(losses)
+
 
 
 def format_eval_output(rows):
@@ -291,42 +292,51 @@ def eval_model(model, data_loader, loss_fn, device, n_examples, detailed_results
 
     losses = []
     correct_predictions = 0
-    rows = []
-    feature = []
+    rows = []  # For storing detailed results
+
     with torch.no_grad():
         for d in data_loader:
             input_ids = d["input_ids"].to(device)
             attention_mask = d["attention_mask"].to(device)
             s2_input_ids = d["s2_input_ids"].to(device)
-            s2_attention_mask = d["attention_mask"].to(device)
+            s2_attention_mask = d["s2_attention_mask"].to(device)  # Ensure this matches your data structure
             targets = d["targets"].to(device)
 
-            outputs, outputs_save = model(input_ids=input_ids, attention_mask=attention_mask, s2_input_ids=s2_input_ids, s2_attention_mask=s2_attention_mask)
+            outputs = model(
+                input_ids=input_ids, 
+                attention_mask=attention_mask, 
+                s2_input_ids=s2_input_ids, 
+                s2_attention_mask=s2_attention_mask
+            )
 
             _, preds = torch.max(outputs, dim=1)
             loss = loss_fn(outputs, targets)
 
             correct_predictions += torch.sum(preds == targets).item()
             losses.append(loss.item())
-            rows.extend(
-                zip(
-                    d["review_text"],
-                    d["sentiment_targets"],
-                    d["targets"].numpy(),
-                    preds.cpu().numpy(),
+
+            if detailed_results:
+                # Extend the rows list with detailed info for further analysis
+                rows.extend(
+                    zip(
+                        d["review_text"],  # or the equivalent field in your data
+                        d["sentiment_targets"],  # or the equivalent field in your data
+                        targets.cpu().numpy(),
+                        preds.cpu().numpy(),
+                    )
                 )
-            )
-            feature.extend(outputs_save)
 
-        if detailed_results:
-            return (
-                correct_predictions / n_examples,
-                np.mean(losses),
-                format_eval_output(rows),
-                feature,
-            )
+    # Compute overall accuracy and average loss
+    accuracy = correct_predictions / n_examples
+    average_loss = np.mean(losses)
 
-    return correct_predictions / n_examples, np.mean(losses)
+    if detailed_results:
+        # Optionally convert detailed results to a DataFrame or similar structure for analysis
+        detailed_results_df = pd.DataFrame(rows, columns=["tweet", "target", "actual_label", "predicted_label"])
+        return accuracy, average_loss, detailed_results_df
+
+    return accuracy, average_loss
+
 
 
 results_per_run = {}
